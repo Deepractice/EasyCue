@@ -1,4 +1,4 @@
-const { invoke } = window.__TAURI__.tauri;
+const { invoke } = window.__TAURI__ ? window.__TAURI__.tauri : { invoke: () => Promise.reject("Tauri not available") };
 
 let currentStatus = 'stopped';
 

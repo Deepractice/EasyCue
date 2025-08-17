@@ -5,25 +5,18 @@
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
     "devUrl": "http://localhost:5173",
-    "frontendDist": "../dist"
+    "frontendDist": "../src"
   },
   "app": {
-    "windows": [
-      {
-        "title": "EasyCue",
-        "width": 400,
-        "height": 300,
-        "resizable": false,
-        "visible": true,
-        "skipTaskbar": true
-      }
-    ],
+    "windows": [],
     "security": {
       "csp": null
     },
     "trayIcon": {
+      "id": "main",
       "iconPath": "icons/icon.png",
-      "iconAsTemplate": true
+      "iconAsTemplate": true,
+      "tooltip": "EasyCue"
     }
   },
   "bundle": {

@@ -3,8 +3,7 @@
 use std::process::{Command, Child};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
-use tauri::menu::{MenuBuilder, MenuItemBuilder};
+use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem};
 
 #[derive(Clone, serde::Serialize)]
 enum ServiceStatus {
@@ -18,6 +17,13 @@ enum ServiceStatus {
 struct ServiceState {
     process: Option<Child>,
     status: ServiceStatus,
+}
+
+struct TrayState<R: tauri::Runtime> {
+    tray: tauri::tray::TrayIcon<R>,
+    start_item: tauri::menu::MenuItem<R>,
+    stop_item: tauri::menu::MenuItem<R>,
+    status_item: tauri::menu::MenuItem<R>,
 }
 
 #[tauri::command]
@@ -64,15 +70,30 @@ fn stop_service(state: State<Mutex<ServiceState>>) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
-fn get_status(state: State<Mutex<ServiceState>>) -> ServiceStatus {
-    state.lock().unwrap().status.clone()
-}
-
-#[tauri::command]
-fn copy_address(_app: AppHandle) -> Result<String, String> {
-    let address = "http://localhost:8080";
-    Ok(address.to_string())
+fn update_tray_menu<R: tauri::Runtime>(app: &AppHandle<R>, is_running: bool) {
+    if let Some(tray_state) = app.try_state::<Mutex<TrayState<R>>>() {
+        let tray_state = tray_state.lock().unwrap();
+        
+        // 更新菜单项状态
+        let _ = tray_state.start_item.set_enabled(!is_running);
+        let _ = tray_state.stop_item.set_enabled(is_running);
+        
+        // 更新状态显示
+        let status_text = if is_running {
+            "● 服务运行中"
+        } else {
+            "○ 服务已停止"
+        };
+        let _ = tray_state.status_item.set_text(status_text);
+        
+        // 更新托盘提示
+        let tooltip = if is_running {
+            "EasyCue - 运行中"
+        } else {
+            "EasyCue - 已停止"
+        };
+        let _ = tray_state.tray.set_tooltip(Some(tooltip));
+    }
 }
 
 fn main() {
@@ -84,74 +105,123 @@ fn main() {
     tauri::Builder::default()
         .manage(service_state)
         .setup(|app| {
-            // 创建托盘菜单
-            let toggle = MenuItemBuilder::with_id("toggle", "启动/停止").build(app)?;
-            let copy = MenuItemBuilder::with_id("copy", "复制地址").build(app)?;
-            let show = MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
-            let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
+            // 隐藏dock图标（macOS）
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::ActivationPolicy;
+                let _ = app.set_activation_policy(ActivationPolicy::Accessory);
+            }
             
+            // 创建菜单项
+            let status_item = MenuItemBuilder::with_id("status", "○ 服务已停止")
+                .enabled(false)
+                .build(app)?;
+            
+            let separator1 = PredefinedMenuItem::separator(app)?;
+            
+            let start_item = MenuItemBuilder::with_id("start", "▶ 启动服务")
+                .enabled(true)
+                .build(app)?;
+            
+            let stop_item = MenuItemBuilder::with_id("stop", "■ 停止服务")
+                .enabled(false)
+                .build(app)?;
+            
+            let separator2 = PredefinedMenuItem::separator(app)?;
+            
+            let copy_item = MenuItemBuilder::with_id("copy", "复制服务地址")
+                .build(app)?;
+            
+            let separator3 = PredefinedMenuItem::separator(app)?;
+            
+            let about_item = MenuItemBuilder::with_id("about", "关于 EasyCue")
+                .build(app)?;
+            
+            let quit_item = MenuItemBuilder::with_id("quit", "退出")
+                .build(app)?;
+            
+            // 构建菜单
             let menu = MenuBuilder::new(app)
-                .items(&[&toggle, &copy, &show, &quit])
+                .items(&[
+                    &status_item,
+                    &separator1,
+                    &start_item,
+                    &stop_item,
+                    &separator2,
+                    &copy_item,
+                    &separator3,
+                    &about_item,
+                    &quit_item,
+                ])
                 .build()?;
             
-            // 创建系统托盘
-            let _tray = TrayIconBuilder::new()
-                .menu(&menu)
-                .tooltip("EasyCue - PromptX Client")
-                .on_menu_event(move |app, event| {
+            // 获取配置文件创建的托盘
+            let tray = app.tray_by_id("main")
+                .expect("Failed to get tray icon");
+            
+            // 设置图标（确保显示）
+            let icon = tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))
+                .expect("Failed to load icon");
+            tray.set_icon(Some(icon))?;
+            
+            // 设置菜单和事件处理
+            tray.set_menu(Some(menu.clone()))?;
+            tray.set_tooltip(Some("EasyCue - 已停止"))?;
+            tray.on_menu_event(move |app, event| {
+                    let service_state = app.state::<Mutex<ServiceState>>();
+                    
                     match event.id.as_ref() {
-                        "toggle" => {
-                            let state = app.state::<Mutex<ServiceState>>();
-                            let service = state.lock().unwrap();
-                            
+                        "start" => {
+                            let mut service = service_state.lock().unwrap();
+                            if !matches!(service.status, ServiceStatus::Running) {
+                                drop(service);
+                                if let Ok(_) = start_service(service_state.clone()) {
+                                    update_tray_menu(app, true);
+                                }
+                            }
+                        }
+                        "stop" => {
+                            let mut service = service_state.lock().unwrap();
                             if matches!(service.status, ServiceStatus::Running) {
                                 drop(service);
-                                let _ = stop_service(state);
-                            } else {
-                                drop(service);
-                                let _ = start_service(state);
+                                if let Ok(_) = stop_service(service_state.clone()) {
+                                    update_tray_menu(app, false);
+                                }
                             }
                         }
                         "copy" => {
-                            let _ = copy_address(app.clone());
-                        }
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
+                            // 复制到剪贴板
+                            #[cfg(target_os = "macos")]
+                            {
+                                let _ = Command::new("sh")
+                                    .arg("-c")
+                                    .arg("echo 'http://localhost:8080' | pbcopy")
+                                    .spawn();
                             }
                         }
+                        "about" => {
+                            // 可以显示一个关于对话框
+                            println!("EasyCue v0.1.0 - PromptX Desktop Client");
+                        }
                         "quit" => {
-                            let state = app.state::<Mutex<ServiceState>>();
-                            let _ = stop_service(state);
+                            let _ = stop_service(service_state.clone());
                             std::process::exit(0);
                         }
                         _ => {}
                     }
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { 
-                        button: MouseButton::Left, 
-                        button_state: MouseButtonState::Up, 
-                        .. 
-                    } = event {
-                        // 左键点击显示窗口
-                        if let Some(window) = tray.app_handle().get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
-                })
-                .build(app)?;
+                });
+            
+            // 保存托盘状态以便后续更新
+            app.manage(Mutex::new(TrayState {
+                tray: app.tray_by_id("main").unwrap(),
+                start_item,
+                stop_item,
+                status_item,
+            }));
             
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            start_service,
-            stop_service,
-            get_status,
-            copy_address
-        ])
+        .invoke_handler(tauri::generate_handler![])
         .run(tauri::generate_context!())
         .expect("failed to run app");
 }
