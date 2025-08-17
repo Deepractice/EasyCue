@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EasyCue</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+        }
+        
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+            font-weight: 300;
+            letter-spacing: -1px;
+        }
+        
+        .status-container {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            font-size: 1.25rem;
+        }
+        
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+        }
+        
+        .status-dot.running { 
+            background: #10b981; 
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+        
+        .status-dot.stopped { 
+            background: #ef4444; 
+        }
+        
+        .status-dot.starting { 
+            background: #f59e0b; 
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+        }
+        
+        .controls {
+            display: flex;
+            gap: 1rem;
+        }
+        
+        button {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+        
+        button:hover:not(:disabled) {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+        
+        button:active:not(:disabled) {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .address {
+            margin-top: 2rem;
+            font-size: 0.875rem;
+            opacity: 0.8;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>EasyCue</h1>
+    
+    <div class="status-container">
+        <div class="status-dot stopped" id="statusDot"></div>
+        <span id="statusText">已停止</span>
+    </div>
+    
+    <div class="controls">
+        <button id="startBtn" onclick="handleStart()">启动服务</button>
+        <button id="stopBtn" onclick="handleStop()" disabled>停止服务</button>
+        <button onclick="handleCopy()">复制地址</button>
+    </div>
+    
+    <div class="address" id="address"></div>
+    
+    <script src="main.js"></script>
+</body>
+</html>
