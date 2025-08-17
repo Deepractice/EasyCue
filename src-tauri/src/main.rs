@@ -3,6 +3,8 @@
 use std::process::{Command, Child};
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton, MouseButtonState};
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
 
 #[derive(Clone, serde::Serialize)]
 enum ServiceStatus {
@@ -69,7 +71,6 @@ fn get_status(state: State<Mutex<ServiceState>>) -> ServiceStatus {
 
 #[tauri::command]
 fn copy_address(_app: AppHandle) -> Result<String, String> {
-    // Mock address for now
     let address = "http://localhost:8080";
     Ok(address.to_string())
 }
@@ -81,23 +82,20 @@ fn main() {
     });
     
     tauri::Builder::default()
-        .plugin(tauri_plugin_shell::init())
         .manage(service_state)
         .setup(|app| {
-            // Create tray icon in setup
-            use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState};
-            use tauri::menu::{MenuBuilder, MenuItemBuilder};
-            use tauri::image::Image;
-            
+            // 创建托盘菜单
             let toggle = MenuItemBuilder::with_id("toggle", "启动/停止").build(app)?;
             let copy = MenuItemBuilder::with_id("copy", "复制地址").build(app)?;
+            let show = MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
             
             let menu = MenuBuilder::new(app)
-                .items(&[&toggle, &copy, &quit])
+                .items(&[&toggle, &copy, &show, &quit])
                 .build()?;
             
-            let _ = TrayIconBuilder::new()
+            // 创建系统托盘
+            let _tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .tooltip("EasyCue - PromptX Client")
                 .on_menu_event(move |app, event| {
@@ -117,6 +115,12 @@ fn main() {
                         "copy" => {
                             let _ = copy_address(app.clone());
                         }
+                        "show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
                         "quit" => {
                             let state = app.state::<Mutex<ServiceState>>();
                             let _ = stop_service(state);
@@ -126,19 +130,15 @@ fn main() {
                     }
                 })
                 .on_tray_icon_event(|tray, event| {
-                    use tauri::tray::TrayIconEvent;
-                    
-                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
-                        let app = tray.app_handle();
-                        let state = app.state::<Mutex<ServiceState>>();
-                        let service = state.lock().unwrap();
-                        
-                        if matches!(service.status, ServiceStatus::Running) {
-                            drop(service);
-                            let _ = stop_service(state);
-                        } else {
-                            drop(service);
-                            let _ = start_service(state);
+                    if let TrayIconEvent::Click { 
+                        button: MouseButton::Left, 
+                        button_state: MouseButtonState::Up, 
+                        .. 
+                    } = event {
+                        // 左键点击显示窗口
+                        if let Some(window) = tray.app_handle().get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
                         }
                     }
                 })

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EasyCue Test</title>
+    <style>
+        body {
+            font-family: system-ui;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            text-align: center;
+        }
+        button {
+            background: white;
+            color: #764ba2;
+            border: none;
+            padding: 12px 24px;
+            margin: 10px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        #status {
+            font-size: 24px;
+            margin: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>EasyCue 测试版</h1>
+    <div id="status">状态: 已停止</div>
+    
+    <button onclick="testStart()">启动服务</button>
+    <button onclick="testStop()">停止服务</button>
+    <button onclick="testStatus()">检查状态</button>
+    
+    <div id="output" style="margin-top: 20px; padding: 20px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+        <pre id="log">等待操作...</pre>
+    </div>
+
+    <script>
+        // 如果在Tauri环境中
+        if (window.__TAURI__) {
+            const { invoke } = window.__TAURI__.tauri;
+            
+            async function testStart() {
+                try {
+                    const result = await invoke('start_service');
+                    log('启动成功: ' + result);
+                    updateStatus();
+                } catch (e) {
+                    log('启动失败: ' + e);
+                }
+            }
+            
+            async function testStop() {
+                try {
+                    const result = await invoke('stop_service');
+                    log('停止成功: ' + result);
+                    updateStatus();
+                } catch (e) {
+                    log('停止失败: ' + e);
+                }
+            }
+            
+            async function testStatus() {
+                try {
+                    const result = await invoke('get_status');
+                    log('状态: ' + JSON.stringify(result));
+                    updateStatus();
+                } catch (e) {
+                    log('获取状态失败: ' + e);
+                }
+            }
+            
+            async function updateStatus() {
+                try {
+                    const status = await invoke('get_status');
+                    const statusText = status.Running ? '运行中' : 
+                                      status.Stopped ? '已停止' : 
+                                      status.Starting ? '启动中' : 
+                                      status.Stopping ? '停止中' : '未知';
+                    document.getElementById('status').textContent = '状态: ' + statusText;
+                } catch (e) {
+                    document.getElementById('status').textContent = '状态: 错误';
+                }
+            }
+            
+            function log(msg) {
+                const logEl = document.getElementById('log');
+                logEl.textContent = new Date().toLocaleTimeString() + ' - ' + msg + '\n' + logEl.textContent;
+            }
+            
+            // 定期更新状态
+            setInterval(updateStatus, 2000);
+            updateStatus();
+        } else {
+            // 非Tauri环境
+            function testStart() { log('模拟: 启动服务'); }
+            function testStop() { log('模拟: 停止服务'); }
+            function testStatus() { log('模拟: 检查状态'); }
+            function log(msg) {
+                document.getElementById('log').textContent = msg;
+            }
+            log('当前在浏览器环境，Tauri功能不可用');
+        }
+    </script>
+</body>
+</html>
